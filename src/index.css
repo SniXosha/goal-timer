@@ -1,3 +1,10 @@
+html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    overflow: hidden; /* removes scrollbars entirely */
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

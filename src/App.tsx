@@ -1,35 +1,38 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import {AppBar, Box, Toolbar, Typography} from "@mui/material";
+import MainPage from "./pages/main/MainPage.tsx";
+import TimerIcon from '@mui/icons-material/Timer';
 
 function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-              <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          Count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    return (
+        <Box
+            sx={{
+                height: "100vh",
+                width: "100%",      // not 100vw
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden", // optional, to clip anything that still spills
+            }}
+        >
+            <AppBar position="static" color="transparent" elevation={0}>
+                <Toolbar>
+                    <TimerIcon sx={{mr: 2}}/>
+                    <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
+                        Goal Timer
+                    </Typography>
+                </Toolbar>
+            </AppBar>
+            <Box
+                sx={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                }}
+            >
+                <MainPage/>
+            </Box>
+        </Box>
+    )
 }
 
 export default App
