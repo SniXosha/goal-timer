@@ -1,44 +1,15 @@
 import {AppBar, Box, createTheme, IconButton, ThemeProvider, Toolbar, Typography} from "@mui/material";
 import MainPage from "./pages/main/MainPage.tsx";
 import TimerIcon from '@mui/icons-material/Timer';
-import {create} from "zustand/react";
-import {persist} from "zustand/middleware";
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-
-declare module '@mui/material/styles' {
-    interface Theme {
-        status: {
-            danger: string;
-        };
-    }
-
-    // allow configuration using `createTheme()`
-    interface ThemeOptions {
-        status?: {
-            danger?: string;
-        };
-    }
-}
-
-interface ThemeState {
-    darkMode: boolean;
-    setDarkMode: (value: boolean) => void;
-}
-
-const useThemeStore = create<ThemeState>()(
-    persist(
-        (set) => ({
-            darkMode: true,
-            setDarkMode: (value: boolean) => set({darkMode: value}),
-        }),
-        {
-            name: 'theme-storage',
-        }
-    )
-);
+import SettingsIcon from '@mui/icons-material/Settings';
+import {useState} from "react";
+import {useSettingsStore} from "./settings/settingsState.ts";
+import {SettingsDialog} from "./settings/SettingsDialog.tsx";
+import {ActivityBar} from "./pages/main/ActivityBar.tsx";
 
 function App() {
-    const {darkMode, setDarkMode} = useThemeStore();
+    const {darkMode, activityBarEnabled} = useSettingsStore();
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const theme = darkMode ? darkTheme : lightTheme;
 
     return (
@@ -60,9 +31,10 @@ function App() {
                         <Typography variant="h6" mr="auto">
                             Goal Timer
                         </Typography>
-                        <IconButton onClick={() => setDarkMode(!darkMode)}>
-                            <DarkModeIcon/>
+                        <IconButton onClick={() => setSettingsOpen(true)}>
+                            <SettingsIcon/>
                         </IconButton>
+                        <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)}/>
                     </Toolbar>
                 </AppBar>
                 <Box
@@ -75,6 +47,7 @@ function App() {
                 >
                     <MainPage/>
                 </Box>
+                {activityBarEnabled && <ActivityBar/>}
             </Box>
         </ThemeProvider>
     )

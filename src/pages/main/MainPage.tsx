@@ -6,6 +6,8 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import {GoalCard} from "./GoalCard.tsx";
 import {formatTime} from "../../common/timeUtils.ts";
 import {useTimerStore} from "./timerState.ts";
+import {useActivityStore} from "./activityState.ts";
+import {useSettingsStore} from "../../settings/settingsState.ts";
 
 const BASE_TITLE = 'Goal Timer'
 
@@ -18,10 +20,27 @@ export default function MainPage() {
         setLastStarted,
         setGoalEnabled
     } = useTimerStore();
+    const {activityBarEnabled} = useSettingsStore();
+    const {startInterval, closeCurrentInterval, resetActivity} = useActivityStore();
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const [currentMs, setCurrentMs] = useState<number>(
         accumulatedMs + (lastStarted != null ? Date.now() - lastStarted : 0)
     )
+
+    // Handle activityBarEnabled toggled while timer is already running
+    const prevActivityBarEnabledRef = useRef(activityBarEnabled);
+    useEffect(() => {
+        const wasEnabled = prevActivityBarEnabledRef.current;
+        prevActivityBarEnabledRef.current = activityBarEnabled;
+        if (wasEnabled === activityBarEnabled) return;
+        if (activityBarEnabled && lastStarted !== null) {
+            startInterval(Date.now());
+        } else if (!activityBarEnabled) {
+            closeCurrentInterval(Date.now());
+        }
+    // lastStarted intentionally omitted — we only react to activityBarEnabled changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activityBarEnabled]);
 
     useEffect(() => {
         if (lastStarted !== null) {
@@ -43,21 +62,28 @@ export default function MainPage() {
 
     const handleStart = () => {
         if (lastStarted === null) {
-            setLastStarted(Date.now())
+            const now = Date.now();
+            setLastStarted(now);
+            if (activityBarEnabled) startInterval(now);
         }
     }
 
     const handlePause = () => {
         if (lastStarted !== null) {
-            setAccumulatedMs(accumulatedMs + (Date.now() - lastStarted))
-            setLastStarted(null)
+            const now = Date.now();
+            setAccumulatedMs(accumulatedMs + (now - lastStarted));
+            setLastStarted(null);
+            if (activityBarEnabled) closeCurrentInterval(now);
         }
     }
 
     const handleStop = () => {
-        setAccumulatedMs(0)
-        setLastStarted(null)
-        setCurrentMs(0)
+        const now = Date.now();
+        if (activityBarEnabled) closeCurrentInterval(now);
+        setAccumulatedMs(0);
+        setLastStarted(null);
+        setCurrentMs(0);
+        if (activityBarEnabled) resetActivity();
     }
 
     return (
