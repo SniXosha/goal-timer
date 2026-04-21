@@ -1,5 +1,5 @@
 import {Box, Typography} from "@mui/material";
-import {useActivityStore} from "./activityState.ts";
+import {useTimersStore} from "./timersState.ts";
 import {useEffect, useState} from "react";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -9,10 +9,16 @@ function localDayStart(dayStr: string): number {
     return new Date(y, m - 1, d).getTime();
 }
 
-export const ActivityBar = () => {
-    const {referenceDay, intervals} = useActivityStore();
-    const [now, setNow] = useState(Date.now());
+interface Props {
+    timerId: string;
+}
 
+export const ActivityBar = ({timerId}: Props) => {
+    const timer = useTimersStore(state => state.timers.find(t => t.id === timerId));
+    const referenceDay = timer?.referenceDay ?? null;
+    const intervals = timer?.intervals ?? [];
+
+    const [now, setNow] = useState(Date.now());
     const hasOpenInterval = intervals.some(iv => iv.end === null);
 
     useEffect(() => {

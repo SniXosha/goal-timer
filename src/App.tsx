@@ -6,21 +6,26 @@ import {useState} from "react";
 import {useSettingsStore} from "./settings/settingsState.ts";
 import {SettingsDialog} from "./settings/SettingsDialog.tsx";
 import {ActivityBar} from "./pages/main/ActivityBar.tsx";
+import {TimersSidebar} from "./TimersSidebar.tsx";
+import {useTimersStore} from "./pages/main/timersState.ts";
 
 function App() {
-    const {darkMode, activityBarEnabled} = useSettingsStore();
+    const {darkMode, activityBarEnabled, multiTimerEnabled} = useSettingsStore();
+    const {timers, activeTimerId} = useTimersStore();
     const [settingsOpen, setSettingsOpen] = useState(false);
     const theme = darkMode ? darkTheme : lightTheme;
+
+    const effectiveTimerId = multiTimerEnabled ? activeTimerId : (timers[0]?.id ?? '');
 
     return (
         <ThemeProvider theme={theme}>
             <Box
                 sx={{
                     height: "100vh",
-                    width: "100%",      // not 100vw
+                    width: "100%",
                     display: "flex",
                     flexDirection: "column",
-                    overflow: "hidden", // optional, to clip anything that still spills
+                    overflow: "hidden",
                     backgroundColor: theme.palette.background.default,
                     color: 'text.primary',
                 }}
@@ -37,17 +42,16 @@ function App() {
                         <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)}/>
                     </Toolbar>
                 </AppBar>
-                <Box
-                    sx={{
-                        flex: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                    }}
-                >
-                    <MainPage/>
+                <Box sx={{flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden'}}>
+                    {multiTimerEnabled && <TimersSidebar/>}
+                    <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden'}}>
+                        <Box sx={{flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                            {effectiveTimerId && <MainPage key={effectiveTimerId} timerId={effectiveTimerId}/>}
+                        </Box>
+                        {activityBarEnabled && effectiveTimerId &&
+                            <ActivityBar timerId={effectiveTimerId}/>}
+                    </Box>
                 </Box>
-                {activityBarEnabled && <ActivityBar/>}
             </Box>
         </ThemeProvider>
     )

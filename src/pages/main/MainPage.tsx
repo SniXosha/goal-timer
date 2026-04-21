@@ -5,23 +5,24 @@ import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
 import {GoalCard} from "./GoalCard.tsx";
 import {formatTime} from "../../common/timeUtils.ts";
-import {useTimerStore} from "./timerState.ts";
-import {useActivityStore} from "./activityState.ts";
+import {useTimersStore} from "./timersState.ts";
 import {useSettingsStore} from "../../settings/settingsState.ts";
 
 const BASE_TITLE = 'Goal Timer'
 
-export default function MainPage() {
-    const {
-        accumulatedMs,
-        lastStarted,
-        goalEnabled,
-        setAccumulatedMs,
-        setLastStarted,
-        setGoalEnabled
-    } = useTimerStore();
+interface Props {
+    timerId: string;
+}
+
+export default function MainPage({timerId}: Props) {
+    const timer = useTimersStore(state => state.timers.find(t => t.id === timerId));
+    const {updateTimer, startInterval, closeCurrentInterval, resetActivity} = useTimersStore();
     const {activityBarEnabled} = useSettingsStore();
-    const {startInterval, closeCurrentInterval, resetActivity} = useActivityStore();
+
+    const accumulatedMs = timer?.accumulatedMs ?? 0;
+    const lastStarted = timer?.lastStarted ?? null;
+    const goalEnabled = timer?.goalEnabled ?? false;
+
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const [currentMs, setCurrentMs] = useState<number>(
         accumulatedMs + (lastStarted != null ? Date.now() - lastStarted : 0)
@@ -34,9 +35,9 @@ export default function MainPage() {
         prevActivityBarEnabledRef.current = activityBarEnabled;
         if (wasEnabled === activityBarEnabled) return;
         if (activityBarEnabled && lastStarted !== null) {
-            startInterval(Date.now());
+            startInterval(timerId, Date.now());
         } else if (!activityBarEnabled) {
-            closeCurrentInterval(Date.now());
+            closeCurrentInterval(timerId, Date.now());
         }
     // lastStarted intentionally omitted — we only react to activityBarEnabled changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,6 +53,7 @@ export default function MainPage() {
             if (intervalRef.current) clearInterval(intervalRef.current)
         }
     }, [accumulatedMs, lastStarted])
+
     useEffect(() => {
         if (currentMs > 0) {
             document.title = `${BASE_TITLE} ${formatTime(currentMs, false)}`;
@@ -63,28 +65,31 @@ export default function MainPage() {
     const handleStart = () => {
         if (lastStarted === null) {
             const now = Date.now();
-            setLastStarted(now);
-            if (activityBarEnabled) startInterval(now);
+            updateTimer(timerId, {lastStarted: now});
+            if (activityBarEnabled) startInterval(timerId, now);
         }
     }
 
     const handlePause = () => {
         if (lastStarted !== null) {
             const now = Date.now();
-            setAccumulatedMs(accumulatedMs + (now - lastStarted));
-            setLastStarted(null);
-            if (activityBarEnabled) closeCurrentInterval(now);
+            updateTimer(timerId, {
+                accumulatedMs: accumulatedMs + (now - lastStarted),
+                lastStarted: null,
+            });
+            if (activityBarEnabled) closeCurrentInterval(timerId, now);
         }
     }
 
     const handleStop = () => {
         const now = Date.now();
-        if (activityBarEnabled) closeCurrentInterval(now);
-        setAccumulatedMs(0);
-        setLastStarted(null);
+        if (activityBarEnabled) closeCurrentInterval(timerId, now);
+        updateTimer(timerId, {accumulatedMs: 0, lastStarted: null});
         setCurrentMs(0);
-        if (activityBarEnabled) resetActivity();
+        if (activityBarEnabled) resetActivity(timerId);
     }
+
+    if (!timer) return null;
 
     return (
         <Stack
@@ -97,7 +102,7 @@ export default function MainPage() {
         >
             <Stack direction='column' height='40%' justifyContent='end'
                    spacing={2}>
-                {goalEnabled && <GoalCard/>}
+                {goalEnabled && <GoalCard timerId={timerId}/>}
                 <Stack
                     direction="row"
                     spacing={2}
@@ -105,7 +110,7 @@ export default function MainPage() {
                     alignItems="center"
                 >
                     <Button variant='contained' size='small'
-                            onClick={() => setGoalEnabled(!goalEnabled)}
+                            onClick={() => updateTimer(timerId, {goalEnabled: !goalEnabled})}
                     >{goalEnabled ? 'Remove goal' : 'Add goal'}</Button>
                     <Button variant='contained' size='small'>Enable splits</Button>
                 </Stack>

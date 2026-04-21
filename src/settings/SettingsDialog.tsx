@@ -7,7 +7,7 @@ interface Props {
 }
 
 export const SettingsDialog = ({open, onClose}: Props) => {
-    const {darkMode, setDarkMode, activityBarEnabled, setActivityBarEnabled} = useSettingsStore();
+    const {darkMode, setDarkMode, activityBarEnabled, setActivityBarEnabled, multiTimerEnabled, setMultiTimerEnabled} = useSettingsStore();
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
@@ -21,6 +21,10 @@ export const SettingsDialog = ({open, onClose}: Props) => {
                     <FormControlLabel
                         control={<Switch checked={activityBarEnabled} onChange={(e) => setActivityBarEnabled(e.target.checked)}/>}
                         label="Daily activity bar"
+                    />
+                    <FormControlLabel
+                        control={<Switch checked={multiTimerEnabled} onChange={(e) => setMultiTimerEnabled(e.target.checked)}/>}
+                        label="Multiple timers"
                     />
                 </Stack>
             </DialogContent>

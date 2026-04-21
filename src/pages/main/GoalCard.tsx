@@ -15,8 +15,11 @@ import * as React from "react";
 import {useState} from "react";
 import {formatTime} from "../../common/timeUtils.ts";
 import SettingsIcon from '@mui/icons-material/Settings';
-import {useTimerStore} from "./timerState.ts";
+import {useTimersStore} from "./timersState.ts";
 
+interface Props {
+    timerId: string;
+}
 
 type FormValues = {
     category: string | null;
@@ -24,26 +27,26 @@ type FormValues = {
     duration: number; // minutes
 };
 
-export const GoalCard = () => {
-    const {
-        accumulatedMs, lastStarted,
-        goalDuration, setGoalDuration,
-        categoryName, setCategoryName,
-        goalName, setGoalName
-    } = useTimerStore();
+export const GoalCard = ({timerId}: Props) => {
+    const timer = useTimersStore(state => state.timers.find(t => t.id === timerId));
+    const updateTimer = useTimersStore(state => state.updateTimer);
 
     const [open, setOpen] = useState(false);
     const [formValues, setFormValues] = useState<FormValues>({
-        category: categoryName,
-        name: goalName,
-        duration: goalDuration / 1000 / 60 // minutes
+        category: timer?.categoryName ?? null,
+        name: timer?.goalName ?? null,
+        duration: (timer?.goalDuration ?? 5.75 * 60 * 60 * 1000) / 1000 / 60,
     });
+
+    if (!timer) return null;
+
+    const {accumulatedMs, lastStarted, goalDuration, categoryName, goalName} = timer;
 
     const handleOpen = () => {
         setFormValues({
             category: categoryName,
             name: goalName,
-            duration: goalDuration / 1000 / 60
+            duration: goalDuration / 1000 / 60,
         });
         setOpen(true);
     };
@@ -58,9 +61,11 @@ export const GoalCard = () => {
             };
 
     const handleSave = () => {
-        setCategoryName(formValues.category);
-        setGoalName(formValues.name);
-        setGoalDuration(Number(formValues.duration) * 60 * 1000); // back to ms
+        updateTimer(timerId, {
+            categoryName: formValues.category,
+            goalName: formValues.name,
+            goalDuration: Number(formValues.duration) * 60 * 1000,
+        });
         setOpen(false);
     };
 
