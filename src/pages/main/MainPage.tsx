@@ -44,6 +44,7 @@ export default function MainPage({timerId}: Props) {
     }, [activityBarEnabled]);
 
     useEffect(() => {
+        setCurrentMs(accumulatedMs + (lastStarted != null ? Date.now() - lastStarted : 0));
         if (lastStarted !== null) {
             intervalRef.current = setInterval(() => {
                 setCurrentMs(accumulatedMs + (Date.now() - lastStarted))

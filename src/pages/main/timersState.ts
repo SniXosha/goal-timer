@@ -23,11 +23,15 @@ interface TimersStore {
     timers: TimerEntry[];
     activeTimerId: string;
     updateTimer: (id: string, patch: Partial<Omit<TimerEntry, 'id'>>) => void;
-    createTimer: () => void;
+    createTimer: (day?: string) => void;
     deleteTimer: (id: string) => void;
     setActiveTimerId: (id: string) => void;
     startInterval: (id: string, timestamp: number) => void;
     closeCurrentInterval: (id: string, timestamp: number) => void;
+    addInterval: (id: string, day: string) => void;
+    updateInterval: (id: string, index: number, interval: ActivityInterval) => void;
+    deleteInterval: (id: string, index: number) => void;
+    replaceIntervals: (id: string, intervals: ActivityInterval[], referenceDay?: string) => void;
     resetActivity: (id: string) => void;
 }
 
@@ -37,6 +41,49 @@ function localDateStr(timestamp: number): string {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+}
+
+export function localDayStart(dayStr: string): number {
+    const [y, m, d] = dayStr.split('-').map(Number);
+    return new Date(y, m - 1, d).getTime();
+}
+
+function normalizeIntervals(intervals: ActivityInterval[]): ActivityInterval[] {
+    return [...intervals]
+        .map(iv => ({
+            start: Math.max(0, iv.start),
+            end: iv.end === null ? null : Math.max(0, iv.end),
+        }))
+        .map(iv => iv.end !== null && iv.end < iv.start ? {...iv, end: iv.start} : iv)
+        .sort((a, b) => a.start - b.start);
+}
+
+function accumulatedFromIntervals(intervals: ActivityInterval[]): number {
+    return intervals.reduce((total, iv) => {
+        if (iv.end === null) return total;
+        return total + Math.max(0, iv.end - iv.start);
+    }, 0);
+}
+
+function withRecalculatedActivity(timer: TimerEntry, intervals: ActivityInterval[]): TimerEntry {
+    const normalized = normalizeIntervals(intervals);
+    return {
+        ...timer,
+        accumulatedMs: accumulatedFromIntervals(normalized),
+        referenceDay: normalized.length > 0 ? localDateStr(normalized[0].start) : null,
+        intervals: normalized,
+    };
+}
+
+function timerBelongsToDay(timer: TimerEntry, day: string): boolean {
+    return timer.referenceDay === day || timer.intervals.some(interval => localDateStr(interval.start) === day);
+}
+
+function timerNameForDay(timers: TimerEntry[], day?: string): string {
+    const count = day
+        ? timers.filter(timer => timerBelongsToDay(timer, day)).length
+        : timers.filter(timer => timer.intervals.length === 0 && timer.referenceDay === null).length;
+    return count === 0 ? 'Timer' : `Timer ${count + 1}`;
 }
 
 function makeTimer(name: string, overrides: Partial<Omit<TimerEntry, 'id' | 'name'>> = {}): TimerEntry {
@@ -93,8 +140,12 @@ export const useTimersStore = create<TimersStore>()(
                 timers: state.timers.map(t => t.id === id ? {...t, ...patch} : t),
             })),
 
-            createTimer: () => {
-                const timer = makeTimer(`Timer ${get().timers.length + 1}`);
+            createTimer: (day) => {
+                const dayStart = day ? localDayStart(day) : null;
+                const timer = makeTimer(timerNameForDay(get().timers, day), dayStart === null ? {} : {
+                    referenceDay: day,
+                    intervals: [{start: dayStart, end: dayStart}],
+                });
                 set(state => ({
                     timers: [...state.timers, timer],
                     activeTimerId: timer.id,
@@ -125,12 +176,38 @@ export const useTimersStore = create<TimersStore>()(
                     if (t.id !== id) return t;
                     const last = t.intervals[t.intervals.length - 1];
                     if (!last || last.end !== null) return t;
-                    return {
-                        ...t,
-                        intervals: t.intervals.map((iv, i) =>
-                            i === t.intervals.length - 1 ? {...iv, end: timestamp} : iv
-                        ),
-                    };
+                    return withRecalculatedActivity(t, t.intervals.map((iv, i) =>
+                        i === t.intervals.length - 1 ? {...iv, end: timestamp} : iv
+                    ));
+                }),
+            })),
+
+            addInterval: (id, day) => set(state => ({
+                timers: state.timers.map(t => {
+                    if (t.id !== id) return t;
+                    const start = localDayStart(day) + 9 * 60 * 60 * 1000;
+                    return withRecalculatedActivity(t, [...t.intervals, {start, end: start + 60 * 60 * 1000}]);
+                }),
+            })),
+
+            updateInterval: (id, index, interval) => set(state => ({
+                timers: state.timers.map(t => {
+                    if (t.id !== id) return t;
+                    return withRecalculatedActivity(t, t.intervals.map((iv, i) => i === index ? interval : iv));
+                }),
+            })),
+
+            deleteInterval: (id, index) => set(state => ({
+                timers: state.timers.map(t => {
+                    if (t.id !== id) return t;
+                    return withRecalculatedActivity(t, t.intervals.filter((_, i) => i !== index));
+                }),
+            })),
+
+            replaceIntervals: (id, intervals, referenceDay) => set(state => ({
+                timers: state.timers.map(t => {
+                    if (t.id !== id) return t;
+                    return {...withRecalculatedActivity(t, intervals), referenceDay: referenceDay ?? t.referenceDay};
                 }),
             })),
 
