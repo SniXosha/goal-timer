@@ -70,8 +70,8 @@ export const GoalCard = ({timerId}: Props) => {
     };
 
     return (
-        <Stack direction="column" width="20rem">
-            <Stack direction="row" alignItems="center" width="20rem">
+        <Stack direction="column" sx={{width: '100%', maxWidth: '20rem'}}>
+            <Stack direction="row" alignItems="center" width="100%">
                 <Typography variant="h5" mr="auto">Goal</Typography>
                 <IconButton onClick={handleOpen}>
                     <SettingsIcon fontSize="large"/>

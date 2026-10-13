@@ -2,73 +2,18 @@ import {Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButt
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
-import {type ActivityInterval, localDayStart, useTimersStore} from "./timersState.ts";
-import {useEffect, useMemo, useState} from "react";
+import {localDayStart, useTimersStore} from "./timersState.ts";
+import {useMemo, useState} from "react";
 import {formatTime} from "../../common/timeUtils.ts";
+import {addDays, localDateStr} from "../../common/dateUtils.ts";
+import {useNow} from "../../common/useNow.ts";
+import {parseSegmentDate, toSegmentInput, validateSegments} from "../../common/segmentUtils.ts";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 
 interface DraftSegment {
     start: string;
     end: string;
-}
-
-function localDateStr(timestamp: number): string {
-    const d = new Date(timestamp);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-}
-
-function toTimeInput(timestamp: number): string {
-    const d = new Date(timestamp);
-    const h = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${h}:${min}`;
-}
-
-function parseTime(dayStart: number, value: string): number | null {
-    const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-    return dayStart + hours * 60 * MINUTE_MS + minutes * MINUTE_MS;
-}
-
-function segmentTouchesDay(interval: ActivityInterval, dayStart: number): boolean {
-    const dayEnd = dayStart + DAY_MS;
-    const end = interval.end ?? Date.now();
-    return interval.start < dayEnd && end > dayStart;
-}
-
-function segmentStartsOnDay(interval: ActivityInterval, day: string): boolean {
-    return localDateStr(interval.start) === day;
-}
-
-function validateDrafts(drafts: DraftSegment[], dayStart: number, now: number): string | null {
-    const parsed = drafts.map((draft, index) => {
-        const start = parseTime(dayStart, draft.start);
-        const end = parseTime(dayStart, draft.end);
-        if (start === null || end === null) return {index, start: 0, end: 0, error: 'Use valid 24h time values.'};
-        if (end < start) return {index, start, end, error: 'End time cannot be before start time.'};
-        if (start > now || end > now) return {index, start, end, error: 'Segments cannot exceed the current time.'};
-        return {index, start, end, error: null};
-    });
-
-    const invalid = parsed.find(item => item.error !== null);
-    if (invalid?.error) return `Row ${invalid.index + 1}: ${invalid.error}`;
-
-    const sorted = [...parsed].sort((a, b) => a.start - b.start);
-    for (let i = 1; i < sorted.length; i += 1) {
-        if (sorted[i - 1].end > sorted[i].start) {
-            return `Rows ${sorted[i - 1].index + 1} and ${sorted[i].index + 1} intersect.`;
-        }
-    }
-
-    return null;
 }
 
 interface Props {
@@ -81,31 +26,22 @@ export const ActivityBar = ({timerId}: Props) => {
     const referenceDay = timer?.referenceDay ?? null;
     const intervals = useMemo(() => timer?.intervals ?? [], [timer?.intervals]);
 
-    const [now, setNow] = useState(Date.now());
+    const now = useNow();
     const [editorOpen, setEditorOpen] = useState(false);
     const [drafts, setDrafts] = useState<DraftSegment[]>([]);
-    const hasOpenInterval = intervals.some(iv => iv.end === null);
-
-    useEffect(() => {
-        if (!hasOpenInterval && !editorOpen) return;
-        const id = setInterval(() => setNow(Date.now()), 1000);
-        return () => clearInterval(id);
-    }, [hasOpenInterval, editorOpen]);
-
     const visibleDay = referenceDay ?? localDateStr(now);
     const dayStart = localDayStart(visibleDay);
-    const dayEnd = dayStart + DAY_MS;
-    const dayIntervals = intervals.filter(iv => segmentTouchesDay(iv, dayStart));
-    const validationMessage = editorOpen ? validateDrafts(drafts, dayStart, now) : null;
+    const dayEnd = localDayStart(addDays(visibleDay, 1));
+    const dayIntervals = intervals.filter(iv => iv.start < dayEnd && (iv.end ?? now) > dayStart);
+    const validationMessage = editorOpen ? validateSegments(drafts, now) : null;
 
-    const toPercent = (ms: number): number => ((ms - dayStart) / DAY_MS) * 100;
+    const toPercent = (ms: number): number => ((ms - dayStart) / (dayEnd - dayStart)) * 100;
 
     const openEditor = () => {
         setDrafts(
-            intervals
-                .filter(iv => segmentStartsOnDay(iv, visibleDay))
+            [...intervals]
                 .sort((a, b) => a.start - b.start)
-                .map(iv => ({start: toTimeInput(iv.start), end: toTimeInput(iv.end ?? now)}))
+                .map(iv => ({start: toSegmentInput(iv.start), end: iv.end === null ? '' : toSegmentInput(iv.end)}))
         );
         setEditorOpen(true);
     };
@@ -117,7 +53,7 @@ export const ActivityBar = ({timerId}: Props) => {
     const handleAddDraft = () => {
         const start = Math.min(Math.max(dayStart + 9 * 60 * MINUTE_MS, dayStart), Math.min(now, dayEnd - MINUTE_MS));
         const end = Math.min(start + 60 * MINUTE_MS, now, dayEnd - MINUTE_MS);
-        setDrafts(current => [...current, {start: toTimeInput(start), end: toTimeInput(Math.max(start, end))}]);
+        setDrafts(current => [...current, {start: toSegmentInput(start), end: toSegmentInput(Math.max(start, end))}]);
     };
 
     const handleDeleteDraft = (index: number) => {
@@ -126,12 +62,11 @@ export const ActivityBar = ({timerId}: Props) => {
 
     const handleSave = () => {
         if (!timer || validationMessage) return;
-        const otherIntervals = intervals.filter(iv => !segmentStartsOnDay(iv, visibleDay));
         const editedIntervals = drafts.map(draft => ({
-            start: parseTime(dayStart, draft.start) ?? dayStart,
-            end: parseTime(dayStart, draft.end) ?? dayStart,
+            start: parseSegmentDate(draft.start) ?? dayStart,
+            end: draft.end ? parseSegmentDate(draft.end) ?? dayStart : null,
         }));
-        replaceIntervals(timerId, [...otherIntervals, ...editedIntervals], visibleDay);
+        replaceIntervals(timerId, editedIntervals);
         setEditorOpen(false);
     };
 
@@ -143,6 +78,9 @@ export const ActivityBar = ({timerId}: Props) => {
                 </Typography>
                 <Button size="small" startIcon={<EditIcon/>} onClick={openEditor}>Edit history</Button>
             </Stack>
+            {intervals.some(iv => (iv.end ?? now) > dayEnd) && <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                This timer continues beyond {visibleDay}. Its full duration is assigned to {visibleDay}; the timeline shows this day only.
+            </Typography>}
             <Box sx={{position: 'relative', width: '100%'}}>
                 <Box sx={{
                     width: '100%',
@@ -198,49 +136,48 @@ export const ActivityBar = ({timerId}: Props) => {
                 </Box>
             </Box>
 
-            <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} fullWidth maxWidth="sm">
+            <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} fullWidth maxWidth="md">
                 <DialogTitle>Timer segments</DialogTitle>
                 <DialogContent>
                     <Stack spacing={1} pt={0.5}>
+                        <Typography variant="body2" color="text.secondary">Edit full dates for sessions crossing midnight. All segments belong to {visibleDay}. Leave the end blank for a running segment.</Typography>
                         {drafts.length === 0 && (
-                            <Typography variant="body2" color="textSecondary">No segments for this day.</Typography>
+                            <Typography variant="body2" color="textSecondary">No segments recorded for this timer.</Typography>
                         )}
                         {drafts.map((draft, index) => {
-                            const start = parseTime(dayStart, draft.start);
-                            const end = parseTime(dayStart, draft.end);
+                            const start = parseSegmentDate(draft.start);
+                            const end = draft.end ? parseSegmentDate(draft.end) : now;
                             const duration = start !== null && end !== null ? Math.max(0, end - start) : 0;
                             return (
                                 <Box key={index} sx={{
                                     display: 'grid',
-                                    gridTemplateColumns: '112px 112px 78px 32px',
+                                    gridTemplateColumns: {xs: 'minmax(0, 1fr) 32px', sm: 'minmax(0, 1fr) minmax(0, 1fr) 78px 32px'},
                                     gap: 1,
                                     alignItems: 'center',
                                 }}>
                                     <TextField
                                         size="small"
-                                        type="text"
+                                        type="datetime-local"
                                         label="Start"
                                         value={draft.start}
                                         onChange={e => handleDraftChange(index, {start: e.target.value})}
-                                        placeholder="HH:MM"
                                         slotProps={{
                                             inputLabel: {shrink: true},
-                                            htmlInput: {inputMode: 'numeric', pattern: '[0-2][0-9]:[0-5][0-9]'},
+                                            htmlInput: {step: '0.001'},
                                         }}
-                                        sx={{width: 112}}
+                                        sx={{minWidth: 0, gridColumn: {xs: '1', sm: 'auto'}}}
                                     />
                                     <TextField
                                         size="small"
-                                        type="text"
-                                        label="End"
+                                        type="datetime-local"
+                                        label="End (blank = running)"
                                         value={draft.end}
                                         onChange={e => handleDraftChange(index, {end: e.target.value})}
-                                        placeholder="HH:MM"
                                         slotProps={{
                                             inputLabel: {shrink: true},
-                                            htmlInput: {inputMode: 'numeric', pattern: '[0-2][0-9]:[0-5][0-9]'},
+                                            htmlInput: {step: '0.001'},
                                         }}
-                                        sx={{width: 112}}
+                                        sx={{minWidth: 0, gridColumn: {xs: '1', sm: 'auto'}}}
                                     />
                                     <Typography variant="body2" sx={{fontVariantNumeric: 'tabular-nums'}}>{formatTime(duration, false)}</Typography>
                                     <IconButton size="small" onClick={() => handleDeleteDraft(index)}>

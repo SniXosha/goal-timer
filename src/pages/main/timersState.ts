@@ -1,5 +1,8 @@
 import {create} from "zustand/react";
 import {persist} from "zustand/middleware";
+import {localDateStr, localDayStart} from "../../common/dateUtils.ts";
+import {timerDuration} from "../../common/timerStats.ts";
+export {localDayStart} from "../../common/dateUtils.ts";
 
 export interface ActivityInterval {
     start: number;
@@ -22,8 +25,9 @@ export interface TimerEntry {
 interface TimersStore {
     timers: TimerEntry[];
     activeTimerId: string;
-    updateTimer: (id: string, patch: Partial<Omit<TimerEntry, 'id'>>) => void;
+    updateTimer: (id: string, patch: Partial<Omit<TimerEntry, 'id' | 'referenceDay'>>) => void;
     createTimer: (day?: string) => void;
+    selectDay: (day: string) => void;
     deleteTimer: (id: string) => void;
     setActiveTimerId: (id: string) => void;
     startInterval: (id: string, timestamp: number) => void;
@@ -33,19 +37,6 @@ interface TimersStore {
     deleteInterval: (id: string, index: number) => void;
     replaceIntervals: (id: string, intervals: ActivityInterval[], referenceDay?: string) => void;
     resetActivity: (id: string) => void;
-}
-
-function localDateStr(timestamp: number): string {
-    const d = new Date(timestamp);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-}
-
-export function localDayStart(dayStr: string): number {
-    const [y, m, d] = dayStr.split('-').map(Number);
-    return new Date(y, m - 1, d).getTime();
 }
 
 function normalizeIntervals(intervals: ActivityInterval[]): ActivityInterval[] {
@@ -70,13 +61,13 @@ function withRecalculatedActivity(timer: TimerEntry, intervals: ActivityInterval
     return {
         ...timer,
         accumulatedMs: accumulatedFromIntervals(normalized),
-        referenceDay: normalized.length > 0 ? localDateStr(normalized[0].start) : null,
+        lastStarted: normalized.find(iv => iv.end === null)?.start ?? null,
         intervals: normalized,
     };
 }
 
 function timerBelongsToDay(timer: TimerEntry, day: string): boolean {
-    return timer.referenceDay === day || timer.intervals.some(interval => localDateStr(interval.start) === day);
+    return timer.referenceDay === day;
 }
 
 function timerNameForDay(timers: TimerEntry[], day?: string): string {
@@ -96,7 +87,7 @@ function makeTimer(name: string, overrides: Partial<Omit<TimerEntry, 'id' | 'nam
         goalDuration: 5.75 * 60 * 60 * 1000,
         categoryName: null,
         goalName: null,
-        referenceDay: null,
+        referenceDay: localDateStr(Date.now()),
         intervals: [],
         ...overrides,
     };
@@ -129,7 +120,21 @@ function getInitialState(): {timers: TimerEntry[]; activeTimerId: string} {
     return {timers: [timer], activeTimerId: timer.id};
 }
 
-const initial = getInitialState();
+// Older calendars changed referenceDay during selection. Recover the original
+// day from the first recorded start (including the old creation placeholder).
+export function migrateTimer(timer: TimerEntry): TimerEntry {
+    const starts = timer.intervals.map(iv => iv.start);
+    if (timer.lastStarted !== null) starts.push(timer.lastStarted);
+    const referenceDay = starts.length ? localDateStr(Math.min(...starts)) : timer.referenceDay ?? localDateStr(Date.now());
+    const intervals = [...timer.intervals];
+    if (timer.lastStarted !== null && !intervals.some(iv => iv.end === null)) {
+        intervals.push({start: timer.lastStarted, end: null});
+    }
+    return {...timer, referenceDay, intervals};
+}
+
+const initialState = getInitialState();
+const initial = {...initialState, timers: initialState.timers.map(migrateTimer)};
 
 export const useTimersStore = create<TimersStore>()(
     persist(
@@ -137,22 +142,27 @@ export const useTimersStore = create<TimersStore>()(
             ...initial,
 
             updateTimer: (id, patch) => set(state => ({
-                timers: state.timers.map(t => t.id === id ? {...t, ...patch} : t),
+                timers: state.timers.map(t => t.id === id ? {...t, ...patch, referenceDay: t.referenceDay} : t),
             })),
 
-            createTimer: (day) => {
-                const dayStart = day ? localDayStart(day) : null;
-                const timer = makeTimer(timerNameForDay(get().timers, day), dayStart === null ? {} : {
-                    referenceDay: day,
-                    intervals: [{start: dayStart, end: dayStart}],
-                });
-                set(state => ({
-                    timers: [...state.timers, timer],
-                    activeTimerId: timer.id,
-                }));
+            createTimer: (day = localDateStr(Date.now())) => {
+                if (localDayStart(day) > Date.now()) return;
+                const timer = makeTimer(timerNameForDay(get().timers, day), {referenceDay: day});
+                set(state => ({timers: [...state.timers, timer], activeTimerId: timer.id}));
+            },
+
+            selectDay: (day) => {
+                if (localDayStart(day) > Date.now()) return;
+                const state = get();
+                const existing = state.timers.filter(timer => timerBelongsToDay(timer, day));
+                const selected = existing.find(timer => timer.id === state.activeTimerId)
+                    ?? existing.sort((a, b) => timerDuration(b, Date.now()) - timerDuration(a, Date.now()))[0];
+                if (selected) set({activeTimerId: selected.id});
+                else state.createTimer(day);
             },
 
             deleteTimer: (id) => set(state => {
+                if (state.timers.length <= 1) return state;
                 const remaining = state.timers.filter(t => t.id !== id);
                 const newActiveId = state.activeTimerId === id ? remaining[0].id : state.activeTimerId;
                 return {timers: remaining, activeTimerId: newActiveId};
@@ -162,10 +172,10 @@ export const useTimersStore = create<TimersStore>()(
 
             startInterval: (id, timestamp) => set(state => ({
                 timers: state.timers.map(t => {
-                    if (t.id !== id) return t;
+                    if (t.id !== id || t.lastStarted !== null) return t;
                     return {
                         ...t,
-                        referenceDay: t.referenceDay ?? localDateStr(timestamp),
+                        lastStarted: timestamp,
                         intervals: [...t.intervals, {start: timestamp, end: null}],
                     };
                 }),
@@ -174,11 +184,13 @@ export const useTimersStore = create<TimersStore>()(
             closeCurrentInterval: (id, timestamp) => set(state => ({
                 timers: state.timers.map(t => {
                     if (t.id !== id) return t;
-                    const last = t.intervals[t.intervals.length - 1];
-                    if (!last || last.end !== null) return t;
-                    return withRecalculatedActivity(t, t.intervals.map((iv, i) =>
-                        i === t.intervals.length - 1 ? {...iv, end: timestamp} : iv
-                    ));
+                    if (t.lastStarted === null) return t;
+                    return {
+                        ...t,
+                        accumulatedMs: t.accumulatedMs + Math.max(0, timestamp - t.lastStarted),
+                        lastStarted: null,
+                        intervals: t.intervals.map(iv => iv.end === null ? {...iv, end: Math.max(iv.start, timestamp)} : iv),
+                    };
                 }),
             })),
 
@@ -204,19 +216,26 @@ export const useTimersStore = create<TimersStore>()(
                 }),
             })),
 
-            replaceIntervals: (id, intervals, referenceDay) => set(state => ({
+            replaceIntervals: (id, intervals) => set(state => ({
                 timers: state.timers.map(t => {
                     if (t.id !== id) return t;
-                    return {...withRecalculatedActivity(t, intervals), referenceDay: referenceDay ?? t.referenceDay};
+                    return withRecalculatedActivity(t, intervals);
                 }),
             })),
 
             resetActivity: (id) => set(state => ({
                 timers: state.timers.map(t =>
-                    t.id === id ? {...t, referenceDay: null, intervals: []} : t
+                    t.id === id ? {...t, accumulatedMs: 0, lastStarted: null, intervals: []} : t
                 ),
             })),
         }),
-        {name: 'timers-storage'}
+        {
+            name: 'timers-storage',
+            version: 1,
+            migrate: persisted => {
+                const state = persisted as {timers: TimerEntry[]; activeTimerId: string};
+                return {...state, timers: state.timers.map(migrateTimer)};
+            },
+        }
     )
 );

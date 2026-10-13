@@ -1,4 +1,4 @@
-import {AppBar, Box, createTheme, IconButton, ThemeProvider, Toolbar, Typography} from "@mui/material";
+import {AppBar, Box, createTheme, IconButton, ThemeProvider, Tab, Tabs, Toolbar, Typography} from "@mui/material";
 import MainPage from "./pages/main/MainPage.tsx";
 import TimerIcon from '@mui/icons-material/Timer';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -7,11 +7,13 @@ import {useSettingsStore} from "./settings/settingsState.ts";
 import {SettingsDialog} from "./settings/SettingsDialog.tsx";
 import {ActivityBar} from "./pages/main/ActivityBar.tsx";
 import {TimersSidebar} from "./TimersSidebar.tsx";
+import StatsPage from "./pages/stats/StatsPage.tsx";
 import {useTimersStore} from "./pages/main/timersState.ts";
 
 function App() {
     const {darkMode, activityBarEnabled, multiTimerEnabled} = useSettingsStore();
     const {timers, activeTimerId} = useTimersStore();
+    const [tab, setTab] = useState<'timer' | 'stats'>('timer');
     const [settingsOpen, setSettingsOpen] = useState(false);
     const theme = darkMode ? darkTheme : lightTheme;
 
@@ -42,16 +44,19 @@ function App() {
                         <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)}/>
                     </Toolbar>
                 </AppBar>
-                <Box sx={{flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden'}}>
+                <Tabs value={tab} onChange={(_, value: 'timer' | 'stats') => setTab(value)} aria-label="Main navigation">
+                    <Tab value="timer" label="Timer"/><Tab value="stats" label="Stats"/>
+                </Tabs>
+                {tab === 'stats' ? <Box sx={{flex: 1, overflow: 'auto'}}><StatsPage/></Box> : <Box sx={{flex: 1, display: 'flex', flexDirection: {xs: 'column', md: 'row'}, overflow: 'auto', minHeight: 0}}>
                     {multiTimerEnabled && <TimersSidebar/>}
-                    <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden'}}>
+                    <Box sx={{flex: 1, minHeight: {xs: 420, md: 0}, minWidth: 0, display: 'flex', flexDirection: 'column'}}>
                         <Box sx={{flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             {effectiveTimerId && <MainPage key={effectiveTimerId} timerId={effectiveTimerId}/>}
                         </Box>
                         {activityBarEnabled && effectiveTimerId &&
                             <ActivityBar timerId={effectiveTimerId}/>}
                     </Box>
-                </Box>
+                </Box>}
             </Box>
         </ThemeProvider>
     )
