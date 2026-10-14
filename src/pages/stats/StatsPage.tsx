@@ -23,7 +23,7 @@ function TimeChart({data, histogram, label}: {data: Datum[]; histogram?: boolean
     return (
         <Box>
             <Typography variant="body2" color="text.secondary" sx={{minHeight: 24}} aria-live="polite">
-                {selected ? `${selected.label}${histogram ? '–' + String((Number(selected.label.slice(0, 2)) + 1) % 24).padStart(2, '0') + ':00' : ''}: ${formatCompactDuration(selected.ms)}` : 'Hover or focus a point to see its total.'}
+                {selected ? `${selected.label}${histogram ? '–' + String((Number(selected.label.slice(0, 2)) + 1) % 24).padStart(2, '0') + ':00' : ''}: ${formatCompactDuration(selected.ms)}${histogram ? ' per active day' : ''}` : `Hover or focus a bar to see its ${histogram ? 'average per active day' : 'total'}.`}
             </Typography>
             <Box sx={{overflowX: 'auto'}}>
                 <Box component="svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}
@@ -37,16 +37,14 @@ function TimeChart({data, histogram, label}: {data: Datum[]; histogram?: boolean
                             <text x={left - 8} y={position + 4} textAnchor="end" fill="currentColor" fontSize={12}>{Number(value.toFixed(2))}h</text>
                         </g>;
                     })}
-                    {!histogram && <polyline points={data.map((item, index) => `${x(index)},${y(item.ms)}`).join(' ')} fill="none" stroke="currentColor" strokeWidth={2}/>}
                     {data.map((item, index) => <g key={item.label}>
-                        {histogram ? <rect x={left + step * index + step * 0.12} y={y(item.ms)} width={step * 0.76}
+                        <rect x={left + step * index + step * 0.12} y={y(item.ms)} width={step * 0.76}
                             height={top + plotHeight - y(item.ms)} fill="currentColor" opacity={index === hovered ? 1 : 0.65}/>
-                            : <circle cx={x(index)} cy={y(item.ms)} r={index === hovered ? 5 : 3} fill="currentColor"/>}
                         {(index % tickEvery === 0 || index === data.length - 1) && <text x={x(index)} y={height - 14} textAnchor="middle" fill="currentColor" fontSize={11}>{axisLabel(item)}</text>}
                         <rect x={left + step * index} y={top} width={step} height={plotHeight} fill="transparent" tabIndex={0}
-                            role="graphics-symbol" aria-label={`${item.label}: ${formatCompactDuration(item.ms)}`}
+                            role="graphics-symbol" aria-label={`${item.label}: ${formatCompactDuration(item.ms)}${histogram ? ' per active day' : ''}`}
                             onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)}>
-                            <title>{item.label}: {formatCompactDuration(item.ms)}</title>
+                            <title>{item.label}: {formatCompactDuration(item.ms)}{histogram ? ' per active day' : ''}</title>
                         </rect>
                     </g>)}
                 </Box>
@@ -91,7 +89,7 @@ export default function StatsPage() {
             {error ? <Typography color="error">{error}</Typography> : <>
                 <Typography variant="body2" color="text.secondary">{start} — {end} · {days.length} days</Typography>
                 <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))'}, gap: 2}}>
-                    {[['Total time', formatCompactDuration(total)], ['Average per day', formatCompactDuration(total / Math.max(1, days.length))], ['Active days', `${activeDays} / ${days.length}`]].map(([label, value]) =>
+                    {[['Total time', formatCompactDuration(total)], ['Average per day', formatCompactDuration(total / Math.max(1, activeDays))], ['Active days', `${activeDays} / ${days.length}`]].map(([label, value]) =>
                         <Paper key={label} variant="outlined" sx={{p: 2}}><Typography color="text.secondary" variant="body2">{label}</Typography><Typography variant="h5">{value}</Typography></Paper>)}
                 </Box>
                 {total === 0 && !hours.some(ms => ms > 0) && <Typography color="text.secondary">No time recorded for this period yet.</Typography>}
@@ -102,8 +100,8 @@ export default function StatsPage() {
                 </Paper>
                 <Paper variant="outlined" sx={{p: {xs: 2, md: 3}}}>
                     <Typography variant="h6">Time by hour of day</Typography>
-                    <Typography variant="body2" color="text.secondary" mb={2}>Actual time spent within this period, split into local clock hours across all timers. {hours.some(ms => ms > 0) ? `Busiest hour: ${String(busiest).padStart(2, '0')}:00.` : ''}</Typography>
-                    <TimeChart data={hours.map((ms, hour) => ({label: `${String(hour).padStart(2, '0')}:00`, ms}))} histogram label="Time distribution across 24 local clock hours"/>
+                    <Typography variant="body2" color="text.secondary" mb={2}>Average time per active day in each local clock hour across all timers. Every hour is divided by the number of days with recorded activity in this period, including days with no activity in that hour. {hours.some(ms => ms > 0) ? `Busiest hour: ${String(busiest).padStart(2, '0')}:00.` : ''}</Typography>
+                    <TimeChart data={hours.map((ms, hour) => ({label: `${String(hour).padStart(2, '0')}:00`, ms}))} histogram label="Average time per active day across 24 local clock hours"/>
                     {unrecorded && <Typography variant="caption" color="text.secondary">Some older time has no recorded intervals. It contributes to daily totals but cannot be placed in an hourly bin.</Typography>}
                 </Paper>
             </>}

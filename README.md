@@ -31,7 +31,8 @@ Activity intervals are recorded regardless of whether the **Daily activity bar**
 
 The Stats tab defaults to the last 30 days including today. Last 7 days, current month, and custom dates (up to one year) are also available.
 
-- **Time spent each day:** assigns each timer's full total to its creation day, including ongoing time. Days with no time show zero.
-- **Time by hour of day:** sums recorded activity within the selected period into 24 local clock-hour bins. Intervals crossing midnight or daylight-saving transitions are split by the actual hours spent. Sessions from timers created outside the period still contribute when they overlap it.
+- **Average per day:** divides total time by the number of days with a positive duration in the selected period. If no days have recorded time, the average is zero.
+- **Time spent each day:** a bar chart that assigns each timer's full total to its creation day, including ongoing time. Days with no time show zero.
+- **Time by hour of day:** averages recorded activity within the selected period into 24 local clock-hour bins. Every bin is divided by the same number of local dates with positive recorded activity in the range, including active dates with no activity in that hour. Dates with no recorded activity are excluded, and an empty range shows zero in every bin. Intervals crossing midnight or daylight-saving transitions are split by the actual hours spent. Sessions from timers created outside the period still contribute when they overlap it.
 
-The two charts can have different totals because daily attribution and actual activity dates serve different purposes. Older accumulated time without activity intervals remains in daily totals but cannot be reconstructed in the hourly chart. Hover or focus chart points to inspect their values.
+The daily chart shows totals by assigned date; the hourly chart shows averages by actual activity date. Its active-day count can differ from the daily summary because sessions can continue into later dates. Older accumulated time without activity intervals remains in daily totals but cannot be reconstructed in the hourly chart or counted as a recorded activity day. Hover or focus chart bars to inspect their values.

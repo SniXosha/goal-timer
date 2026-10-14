@@ -89,28 +89,58 @@ test('start and pause are idempotent and resumed sessions keep their original da
     assert.equal(store().timers[0].referenceDay, '2026-10-01');
 });
 
-test('histogram divides intervals by actual hours and clips to the selected period', () => {
+test('histogram averages across actual activity days and clips to the selected period', () => {
     const timer = create();
     store().startInterval(timer.id, at('2026-10-01', 23, 30));
     store().closeCurrentInterval(timer.id, at('2026-10-02', 1, 15));
     const bins = hourlyDistribution(store().timers, '2026-10-01', '2026-10-02', at('2026-10-03'));
-    assert.equal(bins[23], hour / 2);
-    assert.equal(bins[0], hour);
-    assert.equal(bins[1], hour / 4);
-    assert.equal(bins.reduce((a, b) => a + b), 1.75 * hour);
+    assert.equal(bins[23], hour / 4);
+    assert.equal(bins[0], hour / 2);
+    assert.equal(bins[1], hour / 8);
+    assert.equal(bins.reduce((a, b) => a + b), 0.875 * hour);
     const clipped = hourlyDistribution(store().timers, '2026-10-02', '2026-10-02', at('2026-10-03'));
     assert.equal(clipped[23], 0);
     assert.equal(clipped.reduce((a, b) => a + b), 1.25 * hour);
     assert.equal(dailyTotals(store().timers, '2026-10-02', '2026-10-02', at('2026-10-03'))[0].ms, 0);
 });
 
-test('histogram counts all seven days of a running interval without losing time', () => {
+test('histogram normalizes all seven days of a running interval', () => {
     const timer = create();
     const start = at('2026-10-01');
     const end = at('2026-10-08');
     store().startInterval(timer.id, start);
     const bins = hourlyDistribution(store().timers, '2026-10-01', '2026-10-07', end);
-    assert.ok(bins.every(bin => bin === 7 * hour));
+    assert.ok(bins.every(bin => bin === hour));
+});
+
+test('histogram uses the same active-day count for every hour and counts each day once', () => {
+    const first = create('2026-09-30');
+    store().replaceIntervals(first.id, [
+        {start: at('2026-10-01', 9), end: at('2026-10-01', 10)},
+        {start: at('2026-10-03', 15), end: at('2026-10-03', 16)},
+        {start: at('2026-10-08', 9), end: at('2026-10-08', 10)},
+    ]);
+    const second = create('2026-10-01');
+    store().replaceIntervals(second.id, [{start: at('2026-10-01', 9, 30), end: at('2026-10-01', 10)}]);
+    create('2026-10-02');
+    const unrecorded = create('2026-10-04');
+    store().updateTimer(unrecorded.id, {accumulatedMs: 5 * hour});
+
+    const bins = hourlyDistribution(store().timers, '2026-10-01', '2026-10-07', at('2026-10-09'));
+    assert.equal(bins[9], 0.75 * hour);
+    assert.equal(bins[15], 0.5 * hour);
+    assert.ok(bins.every((ms, index) => index === 9 || index === 15 || ms === 0));
+});
+
+test('histogram shows zero when the range has no positive recorded activity', () => {
+    assert.deepEqual(hourlyDistribution([], '2026-10-01', '2026-10-07', at('2026-10-08')), Array(24).fill(0));
+    const timer = create();
+    store().updateTimer(timer.id, {accumulatedMs: hour, intervals: [
+        {start: at('2026-10-01', 9), end: at('2026-10-01', 9)},
+        {start: at('2026-09-30', 23), end: at('2026-10-01')},
+        {start: at('2026-10-08'), end: null},
+    ]});
+    assert.deepEqual(hourlyDistribution(store().timers, '2026-10-01', '2026-10-07', at('2026-10-08')), Array(24).fill(0));
 });
 
 test('migration recovers original day and keeps existing totals, IDs, goals, and running time', () => {

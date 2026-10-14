@@ -1,5 +1,5 @@
 import type {TimerEntry} from '../pages/main/timersState.ts';
-import {addDays, localDayStart} from './dateUtils.ts';
+import {addDays, localDateStr, localDayStart} from './dateUtils.ts';
 
 export function timerDuration(timer: TimerEntry, now: number): number {
     return timer.accumulatedMs + (timer.lastStarted === null ? 0 : Math.max(0, now - timer.lastStarted));
@@ -17,10 +17,13 @@ export function dailyTotals(timers: TimerEntry[], startDay: string, endDay: stri
     return result;
 }
 
-// The histogram uses actual wall-clock hours, independently of daily attribution.
+// The histogram averages actual wall-clock hours across days with recorded activity,
+// independently of daily attribution. Every bin includes every active day's contribution,
+// even when that day's contribution to the bin is zero.
 // Walking elapsed hours also preserves both instances of a repeated DST hour.
 export function hourlyDistribution(timers: TimerEntry[], startDay: string, endDay: string, now: number): number[] {
     const bins = Array<number>(24).fill(0);
+    const activeDays = new Set<string>();
     const rangeStart = localDayStart(startDay);
     const rangeEnd = Math.min(localDayStart(addDays(endDay, 1)), now);
     for (const timer of timers) {
@@ -32,9 +35,10 @@ export function hourlyDistribution(timers: TimerEntry[], startDay: string, endDa
                 const nextHour = cursor + (60 - date.getMinutes()) * 60000 - date.getSeconds() * 1000 - date.getMilliseconds();
                 const segmentEnd = Math.min(end, nextHour);
                 bins[date.getHours()] += segmentEnd - cursor;
+                activeDays.add(localDateStr(cursor));
                 cursor = segmentEnd;
             }
         }
     }
-    return bins;
+    return bins.map(ms => ms / Math.max(1, activeDays.size));
 }
