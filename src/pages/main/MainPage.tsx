@@ -20,6 +20,7 @@ export default function MainPage({timerId}: Props) {
 
     const accumulatedMs = timer?.accumulatedMs ?? 0;
     const lastStarted = timer?.lastStarted ?? null;
+    const isRunning = lastStarted !== null;
     const goalEnabled = timer?.goalEnabled ?? false;
 
     const now = useNow(lastStarted === null ? null : 16);
@@ -71,11 +72,9 @@ export default function MainPage({timerId}: Props) {
             </Stack>
             <Box height='40%'>
                 <Stack direction="row" spacing={1} justifyContent="center">
-                    <IconButton aria-label="Start timer" onClick={handleStart}>
-                        <PlayCircleIcon fontSize="large"/>
-                    </IconButton>
-                    <IconButton aria-label="Pause timer" onClick={handlePause}>
-                        <PauseCircleIcon fontSize="large"/>
+                    <IconButton aria-label={isRunning ? 'Pause timer' : 'Start timer'}
+                                onClick={isRunning ? handlePause : handleStart}>
+                        {isRunning ? <PauseCircleIcon fontSize="large"/> : <PlayCircleIcon fontSize="large"/>}
                     </IconButton>
                     <IconButton aria-label="Stop timer" onClick={handleStop}>
                         <StopCircleIcon color="error" fontSize="large"/>
